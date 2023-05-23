@@ -9,11 +9,16 @@ El dataset lo conseguí en este [link](https://www.kaggle.com/datasets/mathurina
 
 Son archivos csv donde cada uno tiene un poco más de un millón de filas. Así, cada archivo se considerará como una fuente.
 
-Como esta información es antigua, utilizaré adicionalmente 2 API's relacionadas con el mismo tema.
+Como esta información es antigua, utilizaré adicionalmente estas API's relacionadas con el mismo tema.
 
 Las fuentes serán:
 
-LISTAR FUENTES FINALES
+- [Open Exchange Rates](https://openexchangerates.org/) (1000 request al mes)
+- [Free Forex API](https://www.freeforexapi.com/) (Sin límite aparentemente)
+- [Any API Currency](https://anyapi.io/currency-exchange-api) (500 request al mes)
+
+Listo 3 API's pero posiblemente no se utilicen las 3, esto dependerá de como se comporte cada una a lo largo de las ejecuciones.
+El principal limitante es la naturaleza de la información, ya que casi siempre estos tipos de datos requieren pago para que sean fiables.
 
 La idea es que con los archivos csv se haga una carga inicial de muestra del pipeline y posteriormente se empezarán a consumir las API's para tener la información más actualizada.
 
@@ -75,3 +80,45 @@ Para este modelo, consideré tener 4 capas:
     - Estandarización de las fechas.
     - Promedio de los precios bid y ask para las tablas provenientes de los csv.
 - Presentation: Se harán las transformaciones y cálculos necesarios para obtener los indicadores mencionados en el [uso final](#uso-final). Esta será la capa final y la que estaría disponible para construir gráficos y ejecutar análisis para tomar las decisiones de inversión.
+
+### **Modelo de arquitectura:**
+
+![arquitectura](./img/arquitectura.png)
+
+Este diseño hará uso de los servicios de AWS.
+
+Escogí estos servicios porque he trabajado con algunas de sus herramientas y no he usado el periodo de prueba aún.
+
+Ahora, para cada una de las herramientas mostradas en el gráfico:
+
+**El S3 de amazon** va a estar presente a lo largo de toda la arquitectura, debido a que esta herramienta funciona también de la mano con Aurora para el almacenamiento.
+
+**Lambda es útil por ser un servicio Serverless** y facilita la ejecución del pipeline porque no tendré que preocuparme por el aprovisionamiento ni la administración de los servidores.
+
+Adicionalmente, es posible ejecutarla automáticamente con eventos específicos, como el cambio de archivos en el S3 (agregarlos en este caso).
+
+**Amazon Aurora** me parece que es una solución muy interesante por su compatibilidad con MySQL y PostgreSQL. Es autoescalable y se usa on-demand.
+
+El primer del S3 uso será para recibir los archivos csv para la carga inicial (la capa *RAW*).
+
+Luego, tanto para las API's como para los archivos csv, utilizaré una Lambda que me permita hacer un primer procesamiento de los datos.
+
+Para las API's, se ejecutará la función Lambda cada hora donde se hará un request de los pares EURUSD y GBPUSD, obteniendo su precio en el momento junto con la fecha para ser guardado en la capa *Staging*.
+
+Para los archivos csv, se ejecutará la función cada que aparezca un nuevo archivo en el Bucket.
+
+Esta ejecución inicial no tiene ningún tipo de transformación ya que la idea es obtener la información y llevarla a una capa donde se pueda empezar a transformarla (ELT).
+
+Una vez en la capa *Staging*, se hará la limpieza de los datos, extrayendo las fechas y los ticker para ajustar los datos al [modelo](#modelo), hacer las pruebas de calidad de los datos y luego llevarlos a la capa de *Integration*.
+
+Por último, desde *Integration* se aplicarán las transformaciones finales para obtener los indicadores y llevar la información a *Presentation* para disponibilizarla.
+
+En cualquiera de estos casos, siempre habrá una clase de Python que se encargará de registrar la ejecución del pipeline en un log, indicando cuales partes del proceso fueron exitosas y donde hubieron fallos.
+
+### **Frecuencia de ejecución:**
+
+El objetivo final del pipeline es poder consumir las API's y una de las fuentes restringe los request a 1 por hora, siendo la más restrictiva de las que escogí.
+
+Debido a esto, considero que la frecuencia de ejecución del pipeline va a ser cada hora.
+
+Este tiempo no afecta el [uso final](#uso-final) ya que una actualización por hora entrega una cantidad de datos muy útil para el cálculo de los indicadores.
