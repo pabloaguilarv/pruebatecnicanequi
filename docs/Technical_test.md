@@ -87,7 +87,7 @@ Para este modelo, consideré tener 4 capas:
 
 Este diseño hará uso de los servicios de AWS.
 
-Escogí estos servicios porque he trabajado con algunas de sus herramientas y no he usado el periodo de prueba aún.
+Escogí estos servicios porque he trabajado un poco con algunas de sus herramientas.
 
 Ahora, para cada una de las herramientas mostradas en el gráfico:
 
@@ -122,3 +122,82 @@ El objetivo final del pipeline es poder consumir las API's y una de las fuentes 
 Debido a esto, considero que la frecuencia de ejecución del pipeline va a ser cada hora.
 
 Este tiempo no afecta el [uso final](#uso-final) ya que una actualización por hora entrega una cantidad de datos muy útil para el cálculo de los indicadores.
+
+---
+## **Creación ETL**
+Lastimosamente no tengo el tiempo para crear todo el ETL, aprovisionar el entorno y hacer las pruebas como debería ser, y prefiero entregar algo bien hecho que algo que dificilmente funcione bien.
+
+Aún así voy a indicar y proporcionar algo de código de los ítems.
+
+Modelo de datos:
+```sql
+//Creación de la base de datos
+create database technical_test;
+
+//Creación Staging
+create schema staging;
+
+//Creación Integration
+create schema integration;
+
+//Creación Presentation
+create schema presentation;
+
+//Crear tabla de dimensión de ticker
+create or replace table integration.forex_ticker (
+    ticker_code smallint primary key autoincrement,
+    ticker_name varchar,
+    ticker_description varchar,
+    ticker_base_currency varchar,
+    ticker_quote_currency varchar
+)
+
+//Crear tabla de dimensión de fecha
+create or replace table integration.forex_date (
+    date_timestamp timestamp primary key
+    date_day smallint,
+    date_month smallint,
+    date_year smallint,
+    date_hour smallint,
+    date_minute smallint,
+    date_second smallint
+)
+
+//Crear tabla de hechos
+create or replace table integration.forex_prices (
+    date_timestamp timestamp,
+    ticker_code smallint,
+    price_value float,
+    constraint fk_ticker_code foreign key (ticker_code) references forex_ticker(ticker_code)
+    constraint fk_date_timestamp foreign key (date_timestamp) references forex_date(date_timestamp)
+)
+
+//Crear tabla indicador RSI
+create or replace table presentation.rsi (
+    date_timestamp timestamp,
+    rsi_value smallint
+)
+
+//Crear tabla indicador SMA
+create or replace table presentation.sma (
+    date_timestamp timestamp,
+    sma_value smallint
+)
+```
+
+## **Redacción del proyecto**
+- El objetivo del proyecto es disponibilizar datos con los cuales se puedan graficar 2 indicadores muy usados en el mundo del trading, que son el RSI y el SMA para tomar decisiones de inversión.
+
+- Solamente busco una pregunta:
+    - ¿Como puedo saber en qué momento tengo más posibilidades de éxito al invertir en una divisa?
+
+- El modelo lo elegí porque es el que más se ajusta a la naturaleza de los datos y la información disponible de los archivos y de las API's.
+
+- Escenarios:
+    - Si los datos se incrementaran en 100x: Sugeriría utilizar un entorno distribuído, como Databricks, que me permita escalar vertical y horizontalmente el procesamiento. Respecto al almacenamiento, Aurora tiene las mismas características de elasticidad, por lo que no me preocuparía tanto por esa modificación.
+
+    - Si el pipeline se ejecutara en una ventana de tiempo específica: Supongo que tendría que modificar el código para hacer suficientes request que me dieran la información del día (horas atrás, en los momentos en el que el pipeline no se pudiera ejecutar )y así tener una información fiable.
+
+    - Si la base de datos necesitara ser accedida por más de 100 usuarios: Nuevamente, el uso de un entorno distribuido que pueda escalarse fácilmente para suplir la hora pico de consultas y en las horas valle regresar a un poder de procesamiento menor que no incurra en muchos gastos.
+
+    - Si se requiriera hacer analítica en tiempo real: Descartaría el uso de Lambda porque es muy automática y en este caso necesitaría más control sobre los servidores y el poder de computación. Utilizaría una herramienta que tenga integrado un laboratio de Machine Learning.
